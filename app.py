@@ -1,19 +1,17 @@
 import streamlit as st
-import smtplib
 import requests
 import json
-import threading
-import time
+import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
-# Constants for SMTP
-FROM_EMAIL = 'chaitanya@syncmedia.io'
-FROM_PASSWORD = 'txwg klfe zxln izvz'
+# Constants from Streamlit Secrets
+FROM_EMAIL = st.secrets["email"]["from_email"]
+FROM_PASSWORD = st.secrets["email"]["from_password"]
 SMTP_SERVER = 'smtp.gmail.com'
 SMTP_PORT = 587
+API_KEY = st.secrets["api"]["youtube_api_key"]
 VIDEO_FILE = 'videos.json'  # File to store the latest video ids
-API_KEY = 'AIzaSyAkNKObjLO7WdOjEMzFcUo-aHkdvCVCk_k'  # Replace with your actual API key
 
 # Function to fetch the latest video from the channel
 def get_latest_videos(channel_id):
@@ -27,7 +25,7 @@ def get_latest_videos(channel_id):
         video_url = f'https://www.youtube.com/watch?v={video_id}'
         return video_id, video_title, video_url
     else:
-        print(f"Error fetching data for channel {channel_id}: {data}")
+        st.write(f"Error fetching data for channel {channel_id}: {data}")
         return None, None, None
 
 # Load video data from JSON file
@@ -51,14 +49,17 @@ def send_email(subject, body, to_emails):
     msg['Subject'] = subject
     msg.attach(MIMEText(body, 'plain'))
 
-    with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-        server.starttls()
-        server.login(FROM_EMAIL, FROM_PASSWORD)
-        server.sendmail(FROM_EMAIL, to_emails, msg.as_string())  # Send to all emails at once
-        print('Emails sent successfully')
+    try:
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+            server.starttls()
+            server.login(FROM_EMAIL, FROM_PASSWORD)
+            server.sendmail(FROM_EMAIL, to_emails, msg.as_string())  # Send to all emails at once
+            st.success('Emails sent successfully')
+    except Exception as e:
+        st.error(f"Error sending emails: {e}")
 
 # Main function to check for new videos and send emails
-def main(channel_ids, to_emails):
+def check_for_new_videos(channel_ids, to_emails):
     current_videos = load_video_data()
     new_videos = {}
     email_body = ""
@@ -75,13 +76,7 @@ def main(channel_ids, to_emails):
         save_video_data({**current_videos, **new_videos})
         send_email("New YouTube Video Alert", email_body, to_emails)
     else:
-        print("No new videos found.")
-
-# Function to run the script every 5 hours
-def schedule_task(channel_ids, to_emails):
-    while True:
-        main(channel_ids, to_emails)
-        time.sleep(5)  # Wait for 5 hours
+        st.write("No new videos found.")
 
 # Streamlit UI
 st.title("YouTube Video Alert Emailer")
@@ -116,12 +111,12 @@ for email in st.session_state['email_ids']:
     if st.button(f"Remove {email}"):
         st.session_state['email_ids'].remove(email)
 
-# Button to start the process
-if st.button("Start YouTube Video Monitoring"):
+# Button to check for new videos and send email alerts
+if st.button("Check for New Videos and Send Alerts"):
     channel_ids = st.session_state['channel_ids']
     email_ids = st.session_state['email_ids']
     if channel_ids and email_ids:
-        st.write("Monitoring started. Emails will be sent every 5 hours.")
-        threading.Thread(target=schedule_task, args=(channel_ids, email_ids)).start()
+        st.write("Checking for new videos and sending alerts...")
+        check_for_new_videos(channel_ids, email_ids)
     else:
         st.write("Please add at least one channel ID and one email.")
